@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPasswordStats } from "@/lib/password-store"
+import { getPasswordStats } from "@/lib/database"
 
 export async function GET() {
   try {
@@ -10,7 +10,7 @@ export async function GET() {
       stats,
     })
   } catch (error) {
-    console.error("Error getting password stats:", error)
+    console.error("Error getting credentials stats:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

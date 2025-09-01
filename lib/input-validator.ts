@@ -10,6 +10,12 @@ export const createPasswordSchema = z.object({
       // Basic sanitization - remove null bytes and control characters
       return !/[\x00-\x1f\x7f-\x9f]/.test(password)
     }, "Password contains invalid characters"),
+  networkUser: z
+    .string()
+    .min(1, "Network user is required")
+    .max(100, "Network user is too long")
+    .regex(/^[a-zA-Z0-9._-]+$/, "Network user contains invalid characters"),
+  email: z.string().email("Invalid email format").max(255, "Email is too long"),
   expirationTime: z.enum(["15m", "30m", "1h", "2h", "6h", "12h", "24h", "48h", "72h", "168h", "720h", "custom"]),
   usageLimit: z
     .number()
@@ -20,7 +26,6 @@ export const createPasswordSchema = z.object({
     ),
   customHours: z
     .number()
-    .int()
     .min(0.25, "Custom hours must be at least 0.25 (15 minutes)")
     .max(8760, "Custom hours cannot exceed 1 year")
     .optional(),
@@ -60,6 +65,8 @@ export function validateCreatePasswordRequest(body: any) {
       data: {
         ...validated,
         password: sanitizeInput(validated.password),
+        networkUser: sanitizeInput(validated.networkUser),
+        email: sanitizeInput(validated.email),
       },
     }
   } catch (error) {

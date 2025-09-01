@@ -4,7 +4,6 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Updated color tokens for Amara Net Zero branding with emerald green theme */
   --background: oklch(1 0 0); /* #ffffff */
   --foreground: oklch(0.269 0.014 285.82); /* #1f2937 */
   --card: oklch(0.985 0.002 247.86); /* #f8fafc */
@@ -41,7 +40,6 @@
 }
 
 .dark {
-  /* Enhanced dark theme colors with emerald accents for Amara Net Zero */
   --background: oklch(0.095 0 0); /* #0f0f0f */
   --foreground: oklch(0.985 0 0); /* #fafafa */
   --card: oklch(0.145 0 0); /* #1a1a1a */

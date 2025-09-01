@@ -28,6 +28,12 @@ interface PasswordStrength {
   feedback: string[]
 }
 
+interface UserCredentials {
+  networkUser: string
+  email: string
+  password: string
+}
+
 export default function PasswordGeneratorPage() {
   const { toast } = useToast()
   const [password, setPassword] = useState("")
@@ -39,6 +45,12 @@ export default function PasswordGeneratorPage() {
     includeLowercase: true,
     includeNumbers: true,
     includeSymbols: true,
+  })
+
+  const [userCredentials, setUserCredentials] = useState<UserCredentials>({
+    networkUser: "",
+    email: "",
+    password: "",
   })
 
   const generatePassword = useCallback(() => {
@@ -128,13 +140,18 @@ export default function PasswordGeneratorPage() {
   const sharePassword = () => {
     if (!password) return
 
-    sessionStorage.setItem("passwordToShare", password)
+    const shareData = {
+      password,
+      networkUser: userCredentials.networkUser,
+      email: userCredentials.email,
+    }
+
+    sessionStorage.setItem("credentialsToShare", JSON.stringify(shareData))
     window.location.href = "/share"
   }
 
   const strength = analyzePasswordStrength(password)
 
-  
   useState(() => {
     generatePassword()
   })
@@ -152,12 +169,47 @@ export default function PasswordGeneratorPage() {
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Gerador de Senhas Seguras</h1>
-          <p className="text-muted-foreground">Crie e compartilhe senhas com segurança máxima</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Gerador de Credenciais Internas</h1>
+          <p className="text-muted-foreground">Crie e compartilhe credenciais de colaboradores com segurança máxima</p>
         </div>
 
         <div className="max-w-2xl mx-auto space-y-6">
           <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">Informações do Colaborador</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="networkUser">Usuário de Rede</Label>
+                  <Input
+                    id="networkUser"
+                    type="text"
+                    value={userCredentials.networkUser}
+                    onChange={(e) => setUserCredentials((prev) => ({ ...prev, networkUser: e.target.value }))}
+                    placeholder="ex: joao.silva"
+                    className="bg-background/50 border-primary/30 focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail Corporativo</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={userCredentials.email}
+                    onChange={(e) => setUserCredentials((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="joao.silva@amaranetzero.com"
+                    className="bg-background/50 border-primary/30 focus:border-primary"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">Senha Gerada</CardTitle>
+            </CardHeader>
             <CardContent className="pt-6 space-y-4">
               <div className="relative">
                 <Input
@@ -196,13 +248,19 @@ export default function PasswordGeneratorPage() {
                 <Button
                   onClick={sharePassword}
                   variant="outline"
-                  disabled={!password}
+                  disabled={!password || !userCredentials.networkUser.trim() || !userCredentials.email.trim()}
                   className="border-primary/30 hover:bg-primary/10 bg-transparent"
                 >
                   <Share2 className="h-4 w-4 mr-2" />
-                  Compartilhar Senha
+                  Compartilhar Credenciais
                 </Button>
               </div>
+
+              {(!userCredentials.networkUser.trim() || !userCredentials.email.trim()) && password && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Preencha o usuário de rede e e-mail para compartilhar as credenciais
+                </p>
+              )}
             </CardContent>
           </Card>
 

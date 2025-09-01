@@ -17,6 +17,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Amara Net Zero - Gerador de Senhas Seguras",
   description: "Gere senhas seguras instantaneamente. Gerenciamento profissional de senhas para Amara Net Zero.",
+    generator: 'v0.app'
 }
 
 export default function RootLayout({
