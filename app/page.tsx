@@ -134,7 +134,7 @@ export default function PasswordGeneratorPage() {
 
   const strength = analyzePasswordStrength(password)
 
-  // Generate initial password on mount
+  
   useState(() => {
     generatePassword()
   })
