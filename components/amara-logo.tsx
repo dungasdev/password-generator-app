@@ -1,5 +1,4 @@
 import Image from "next/image"
-import fullLogo from "@/assets/full_logo.webp"
 
 interface AmaraLogoProps {
   size?: "sm" | "md" | "lg"
@@ -16,9 +15,11 @@ export default function AmaraLogo({ size = "md" }: AmaraLogoProps) {
   return (
     <div className="flex items-center gap-3">
       <Image
-        src={fullLogo}
+        src="/amara-logo.png"
         alt="Amara Net Zero logo"
-        className={`${sizeClasses[size].replace(" w-", " ")} w-auto`}
+        width={32}
+        height={32}
+        className={`${sizeClasses[size]} object-contain`}
         priority
       />
     </div>

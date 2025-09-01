@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 import { generateSecureToken } from "@/lib/crypto"
-import { storePassword, type CreatePasswordData } from "@/lib/password-store"
+import { storePassword, type CreateCredentialsData } from "@/lib/database"
 import { createPasswordLimiter, getClientIdentifier } from "@/lib/rate-limiter"
 import { securityLogger } from "@/lib/security-logger"
 import { validateCreatePasswordRequest } from "@/lib/input-validator"
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       return createSecureResponse({ error: validation.error }, 400)
     }
 
-    const { password, expirationTime, usageLimit, customHours } = validation.data
+    const { password, expirationTime, usageLimit, customHours, networkUser, email } = validation.data
 
     // Calculate expiration hours
     let expirationHours: number
@@ -103,22 +103,26 @@ export async function POST(request: NextRequest) {
     const token = generateSecureToken()
 
     // Store password
-    const passwordData: CreatePasswordData = {
+    const credentialsData: CreateCredentialsData = {
       password,
+      networkUser,
+      email,
       expirationHours,
       usageLimit,
     }
 
-    const stored = storePassword(token, passwordData)
+    const stored = storePassword(token, credentialsData)
 
     // Log successful password creation
     securityLogger.log(
-      "password_created",
+      "credentials_created",
       "low",
       {
         expirationHours,
         usageLimit,
         passwordLength: password.length,
+        hasNetworkUser: !!networkUser,
+        hasEmail: !!email,
       },
       clientId,
     )

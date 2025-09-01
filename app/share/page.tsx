@@ -15,6 +15,8 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 interface ShareSettings {
   password: string
+  networkUser: string
+  email: string
   expirationTime: string
   usageLimit: number
   customHours?: number
@@ -23,6 +25,8 @@ interface ShareSettings {
 export default function SharePage() {
   const [settings, setSettings] = useState<ShareSettings>({
     password: "",
+    networkUser: "",
+    email: "",
     expirationTime: "24h",
     usageLimit: 1,
   })
@@ -33,12 +37,21 @@ export default function SharePage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    const passwordFromStorage = sessionStorage.getItem("passwordToShare")
+    const credentialsFromStorage = sessionStorage.getItem("credentialsToShare")
 
-    if (passwordFromStorage) {
-      setSettings((prev) => ({ ...prev, password: passwordFromStorage }))
-      // Clear from sessionStorage after using
-      sessionStorage.removeItem("passwordToShare")
+    if (credentialsFromStorage) {
+      try {
+        const credentials = JSON.parse(credentialsFromStorage)
+        setSettings((prev) => ({
+          ...prev,
+          password: credentials.password || "",
+          networkUser: credentials.networkUser || "",
+          email: credentials.email || "",
+        }))
+        sessionStorage.removeItem("credentialsToShare")
+      } catch (error) {
+        console.error("Error parsing credentials from storage:", error)
+      }
     }
   }, [])
 
@@ -66,7 +79,7 @@ export default function SharePage() {
   ]
 
   const generateShareLink = async () => {
-    if (!settings.password.trim()) return
+    if (!settings.password.trim() || !settings.networkUser.trim() || !settings.email.trim()) return
 
     setIsGenerating(true)
     setError("")
@@ -79,6 +92,8 @@ export default function SharePage() {
         },
         body: JSON.stringify({
           password: settings.password,
+          networkUser: settings.networkUser,
+          email: settings.email,
           expirationTime: settings.expirationTime,
           usageLimit: settings.usageLimit,
           customHours: settings.customHours,
@@ -141,7 +156,6 @@ export default function SharePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -167,11 +181,34 @@ export default function SharePage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <LinkIcon className="h-5 w-5 text-primary" />
-                  Senha para Compartilhar
+                  Credenciais do Colaborador
                 </CardTitle>
-                <CardDescription>Digite a senha que você deseja compartilhar com segurança</CardDescription>
+                <CardDescription>Informações que serão compartilhadas com o colaborador</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="networkUser">Usuário de Rede</Label>
+                    <Input
+                      id="networkUser"
+                      type="text"
+                      value={settings.networkUser}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, networkUser: e.target.value }))}
+                      placeholder="ex: joao.silva"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">E-mail Corporativo</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={settings.email}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, email: e.target.value }))}
+                      placeholder="joao.silva@amaranetzero.com"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="password">Senha</Label>
                   <Input
@@ -184,15 +221,11 @@ export default function SharePage() {
                   />
                 </div>
 
-                {!settings.password.trim() && (
+                {(!settings.password.trim() || !settings.networkUser.trim() || !settings.email.trim()) && (
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Por favor, digite uma senha para compartilhar. Você pode gerar uma no{" "}
-                      <Link href="/" className="text-primary hover:underline">
-                        gerador de senhas
-                      </Link>
-                      .
+                      Por favor, preencha todos os campos obrigatórios: usuário de rede, e-mail e senha.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -296,6 +329,16 @@ export default function SharePage() {
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Usuário de Rede</span>
+                    <Badge variant="outline">{settings.networkUser || "Não informado"}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">E-mail</span>
+                    <Badge variant="outline" className="max-w-[200px] truncate">
+                      {settings.email || "Não informado"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Comprimento da Senha</span>
                     <Badge variant="outline">{settings.password.length} caracteres</Badge>
                   </div>
@@ -322,6 +365,8 @@ export default function SharePage() {
                   size="lg"
                   disabled={
                     !settings.password.trim() ||
+                    !settings.networkUser.trim() ||
+                    !settings.email.trim() ||
                     isGenerating ||
                     (settings.expirationTime === "custom" && (!settings.customHours || settings.customHours < 1))
                   }
