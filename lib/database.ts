@@ -1,6 +1,7 @@
 import Database from "better-sqlite3"
 import { type EncryptedData, encrypt, decrypt } from "./crypto"
 import path from "path"
+import { getExpirationManager } from "./expiration-manager"
 
 export interface StoredCredentials {
   id: string
@@ -43,7 +44,7 @@ class CredentialsDatabase {
 
     this.db = new Database(dbPath)
     this.initializeDatabase()
-    this.startCleanupJob()
+    // Removed startCleanupJob() - now managed by ExpirationManager
   }
 
   private initializeDatabase() {
@@ -63,40 +64,14 @@ class CredentialsDatabase {
       )
     `)
 
-    // Create indexes for better performance
+    // Optimized indexes for expiration queries
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_token ON credentials(token);
       CREATE INDEX IF NOT EXISTS idx_expires_at ON credentials(expires_at);
       CREATE INDEX IF NOT EXISTS idx_created_at ON credentials(created_at);
+      CREATE INDEX IF NOT EXISTS idx_usage_limit_count ON credentials(usage_limit, usage_count);
+      CREATE INDEX IF NOT EXISTS idx_expires_usage ON credentials(expires_at, usage_limit, usage_count);
     `)
-  }
-
-  private startCleanupJob() {
-    // Cleanup expired credentials every 2 minutes
-    setInterval(
-      () => {
-        this.cleanupExpiredCredentials()
-      },
-      2 * 60 * 1000,
-    )
-
-    // Initial cleanup
-    this.cleanupExpiredCredentials()
-  }
-
-  private cleanupExpiredCredentials() {
-    const now = Date.now()
-
-    const deleteExpired = this.db.prepare(`
-      DELETE FROM credentials 
-      WHERE expires_at < ? OR (usage_limit != -1 AND usage_count >= usage_limit)
-    `)
-
-    const result = deleteExpired.run(now)
-
-    if (result.changes > 0) {
-      console.log(`[Database] Cleaned up ${result.changes} expired credentials`)
-    }
   }
 
   storeCredentials(token: string, data: CreateCredentialsData): StoredCredentials {
@@ -207,38 +182,48 @@ class CredentialsDatabase {
     }
   }
 
-  getCredentialsStats(): { total: number; expired: number; active: number; recentlyCreated: number } {
+  getCredentialsStats(): {
+    total: number
+    expired: number
+    active: number
+    recentlyCreated: number
+    // Additional expiration statistics
+    nearExpiration: number
+    expiredByTime: number
+    expiredByUsage: number
+  } {
     const now = Date.now()
     const oneDayAgo = now - 24 * 60 * 60 * 1000
+    const oneHourFromNow = now + 60 * 60 * 1000
 
     const stats = this.db
       .prepare(`
       SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN expires_at < ? OR (usage_limit != -1 AND usage_count >= usage_limit) THEN 1 ELSE 0 END) as expired,
+        SUM(CASE WHEN expires_at < ? THEN 1 ELSE 0 END) as expiredByTime,
+        SUM(CASE WHEN usage_limit != -1 AND usage_count >= usage_limit THEN 1 ELSE 0 END) as expiredByUsage,
         SUM(CASE WHEN expires_at >= ? AND (usage_limit = -1 OR usage_count < usage_limit) THEN 1 ELSE 0 END) as active,
-        SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as recentlyCreated
+        SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as recentlyCreated,
+        SUM(CASE WHEN expires_at > ? AND expires_at < ? AND (usage_limit = -1 OR usage_count < usage_limit) THEN 1 ELSE 0 END) as nearExpiration
       FROM credentials
     `)
-      .get(now, now, oneDayAgo) as any
+      .get(now, now, oneDayAgo, now, oneHourFromNow) as any
 
     return {
       total: stats.total || 0,
-      expired: stats.expired || 0,
+      expired: (stats.expiredByTime || 0) + (stats.expiredByUsage || 0),
       active: stats.active || 0,
       recentlyCreated: stats.recentlyCreated || 0,
+      nearExpiration: stats.nearExpiration || 0,
+      expiredByTime: stats.expiredByTime || 0,
+      expiredByUsage: stats.expiredByUsage || 0,
     }
   }
 
   manualCleanup(): { deleted: number } {
-    const now = Date.now()
-    const deleteExpired = this.db.prepare(`
-      DELETE FROM credentials 
-      WHERE expires_at < ? OR (usage_limit != -1 AND usage_count >= usage_limit)
-    `)
-
-    const result = deleteExpired.run(now)
-    return { deleted: result.changes }
+    // Delegated to the ExpirationManager
+    const expirationManager = getExpirationManager()
+    return expirationManager.manualCleanup().then((stats) => ({ deleted: stats.totalExpired }))
   }
 
   close() {
