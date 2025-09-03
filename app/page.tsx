@@ -79,7 +79,7 @@ export default function PasswordGeneratorPage() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <AmaraLogo size="md" />
+            <AmaraLogo size="lg" showText />
             <ThemeToggle />
           </div>
         </div>

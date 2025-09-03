@@ -118,7 +118,7 @@ export default function SharePage() {
                   Voltar ao Gerador
                 </Link>
               </Button>
-              <AmaraLogo size="md" />
+              <AmaraLogo size="lg" showText />
             </div>
             <ThemeToggle />
           </div>

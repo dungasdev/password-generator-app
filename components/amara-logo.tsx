@@ -6,21 +6,28 @@ interface AmaraLogoProps {
   showText?: boolean
 }
 
-export default function AmaraLogo({ size = "md" }: AmaraLogoProps) {
+export default function AmaraLogo({ size = "md", showText = false }: AmaraLogoProps) {
   const sizeClasses = {
-    sm: "h-9 w-9",
-    md: "h-12 w-12",
-    lg: "h-16 w-16",
+    sm: "h-8 w-auto",
+    md: "h-12 w-auto",
+    lg: "h-16 w-auto",
+  }
+
+  const textSizeClasses = {
+    sm: "text-lg",
+    md: "text-xl",
+    lg: "text-2xl",
   }
 
   return (
     <div className="flex items-center gap-3">
-      <Image
-        src={fullLogo}
-        alt="Amara Net Zero logo"
-        className={`${sizeClasses[size].replace(" w-", " ")} w-auto`}
-        priority
-      />
+      <Image src={fullLogo || "/placeholder.svg"} alt="Amara Net Zero logo" className={sizeClasses[size]} priority />
+      {showText && (
+        <div className="flex flex-col">
+          <span className={`font-bold text-foreground ${textSizeClasses[size]}`}>Amara Net Zero</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">Gerador de Senhas</span>
+        </div>
+      )}
     </div>
   )
 }
