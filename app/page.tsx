@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,110 +12,18 @@ import { Copy, RefreshCw, Check, Eye, EyeOff, Share2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { ThemeToggle } from "@/components/theme-toggle"
 import AmaraLogo from "@/components/amara-logo"
-
-interface PasswordCriteria {
-  length: number
-  includeUppercase: boolean
-  includeLowercase: boolean
-  includeNumbers: boolean
-  includeSymbols: boolean
-}
-
-interface PasswordStrength {
-  score: number
-  label: string
-  color: string
-  feedback: string[]
-}
-
-interface UserCredentials {
-  networkUser: string
-  email: string
-  password: string
-}
+import { usePasswordForm } from "@/hooks/use-password-form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 
 export default function PasswordGeneratorPage() {
   const { toast } = useToast()
+  const { form, generatePassword, analyzePasswordStrength } = usePasswordForm()
+
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(true)
   const [copied, setCopied] = useState(false)
-  const [criteria, setCriteria] = useState<PasswordCriteria>({
-    length: 16,
-    includeUppercase: true,
-    includeLowercase: true,
-    includeNumbers: true,
-    includeSymbols: true,
-  })
 
-  const [userCredentials, setUserCredentials] = useState<UserCredentials>({
-    networkUser: "",
-    email: "",
-    password: "",
-  })
-
-  const generatePassword = useCallback(() => {
-    let charset = ""
-
-    if (criteria.includeLowercase) charset += "abcdefghijklmnopqrstuvwxyz"
-    if (criteria.includeUppercase) charset += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    if (criteria.includeNumbers) charset += "0123456789"
-    if (criteria.includeSymbols) charset += "!@#$%^&*()_+-=[]{}|;:,.<>?"
-
-    if (charset === "") {
-      toast({
-        title: "Erro",
-        description: "Selecione pelo menos um tipo de caractere.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    let result = ""
-    const array = new Uint8Array(criteria.length)
-    crypto.getRandomValues(array)
-
-    for (let i = 0; i < criteria.length; i++) {
-      result += charset[array[i] % charset.length]
-    }
-
-    setPassword(result)
-    setCopied(false)
-  }, [criteria, toast])
-
-  const analyzePasswordStrength = useCallback((pwd: string): PasswordStrength => {
-    if (!pwd) return { score: 0, label: "Sem Senha", color: "bg-gray-300", feedback: [] }
-
-    let score = 0
-    const feedback: string[] = []
-
-    // Length scoring
-    if (pwd.length >= 12) score += 25
-    else if (pwd.length >= 8) score += 15
-    else feedback.push("Use pelo menos 12 caracteres")
-
-    // Character variety
-    if (/[a-z]/.test(pwd)) score += 15
-    else feedback.push("Adicione letras minúsculas")
-
-    if (/[A-Z]/.test(pwd)) score += 15
-    else feedback.push("Adicione letras maiúsculas")
-
-    if (/[0-9]/.test(pwd)) score += 15
-    else feedback.push("Adicione números")
-
-    if (/[^A-Za-z0-9]/.test(pwd)) score += 20
-    else feedback.push("Adicione caracteres especiais")
-
-    // Complexity bonus
-    const uniqueChars = new Set(pwd).size
-    if (uniqueChars / pwd.length > 0.7) score += 10
-
-    if (score >= 80) return { score, label: "Muito Forte", color: "bg-green-500", feedback }
-    if (score >= 60) return { score, label: "Forte", color: "bg-blue-500", feedback }
-    if (score >= 40) return { score, label: "Média", color: "bg-yellow-500", feedback }
-    if (score >= 20) return { score, label: "Fraca", color: "bg-orange-500", feedback }
-    return { score, label: "Muito Fraca", color: "bg-red-500", feedback }
-  }, [])
+  const watchedValues = form.watch()
 
   const copyToClipboard = async () => {
     if (!password) return
@@ -137,13 +45,23 @@ export default function PasswordGeneratorPage() {
     }
   }
 
+  const handleGeneratePassword = () => {
+    const { networkUser, email, ...criteria } = watchedValues
+    const newPassword = generatePassword(criteria)
+    if (newPassword) {
+      setPassword(newPassword)
+      setCopied(false)
+    }
+  }
+
   const sharePassword = () => {
     if (!password) return
 
+    const formData = form.getValues()
     const shareData = {
       password,
-      networkUser: userCredentials.networkUser,
-      email: userCredentials.email,
+      networkUser: formData.networkUser,
+      email: formData.email,
     }
 
     sessionStorage.setItem("credentialsToShare", JSON.stringify(shareData))
@@ -152,9 +70,9 @@ export default function PasswordGeneratorPage() {
 
   const strength = analyzePasswordStrength(password)
 
-  useState(() => {
-    generatePassword()
-  })
+  useEffect(() => {
+    handleGeneratePassword()
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -173,98 +91,111 @@ export default function PasswordGeneratorPage() {
           <p className="text-muted-foreground">Crie e compartilhe credenciais de colaboradores com segurança máxima</p>
         </div>
 
-        <div className="max-w-2xl mx-auto space-y-6">
-          <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">Informações do Colaborador</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="networkUser">Usuário de Rede</Label>
-                  <Input
-                    id="networkUser"
-                    type="text"
-                    value={userCredentials.networkUser}
-                    onChange={(e) => setUserCredentials((prev) => ({ ...prev, networkUser: e.target.value }))}
-                    placeholder="ex: joao.silva"
-                    className="bg-background/50 border-primary/30 focus:border-primary"
+        <Form {...form}>
+          <div className="max-w-2xl mx-auto space-y-6">
+            <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">Informações do Colaborador</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="networkUser"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Usuário de Rede</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="ex: joao.silva"
+                            className="bg-background/50 border-primary/30 focus:border-primary"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>E-mail Corporativo</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="joao.silva@amaranetzero.com"
+                            className="bg-background/50 border-primary/30 focus:border-primary"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-mail Corporativo</Label>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">Senha Gerada</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <div className="relative">
                   <Input
-                    id="email"
-                    type="email"
-                    value={userCredentials.email}
-                    onChange={(e) => setUserCredentials((prev) => ({ ...prev, email: e.target.value }))}
-                    placeholder="joao.silva@amaranetzero.com"
-                    className="bg-background/50 border-primary/30 focus:border-primary"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    readOnly
+                    className="font-mono text-lg pr-20 text-center bg-background/50 border-primary/30 focus:border-primary"
+                    placeholder="Sua senha aparecerá aqui"
                   />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="h-8 w-8 p-0 hover:bg-primary/10"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={copyToClipboard}
+                      className="h-8 w-8 p-0 hover:bg-primary/10"
+                      disabled={!password}
+                    >
+                      {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">Senha Gerada</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  readOnly
-                  className="font-mono text-lg pr-20 text-center bg-background/50 border-primary/30 focus:border-primary"
-                  placeholder="Sua senha aparecerá aqui"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="h-8 w-8 p-0 hover:bg-primary/10"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button onClick={handleGeneratePassword} className="bg-primary hover:bg-primary/90">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Gerar Nova Senha
                   </Button>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={copyToClipboard}
-                    className="h-8 w-8 p-0 hover:bg-primary/10"
-                    disabled={!password}
+                    onClick={sharePassword}
+                    variant="outline"
+                    disabled={!password || !form.formState.isValid}
+                    className="border-primary/30 hover:bg-primary/10 bg-transparent"
                   >
-                    {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Compartilhar Credenciais
                   </Button>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <Button onClick={generatePassword} className="bg-primary hover:bg-primary/90">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Gerar Nova Senha
-                </Button>
-                <Button
-                  onClick={sharePassword}
-                  variant="outline"
-                  disabled={!password || !userCredentials.networkUser.trim() || !userCredentials.email.trim()}
-                  className="border-primary/30 hover:bg-primary/10 bg-transparent"
-                >
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Compartilhar Credenciais
-                </Button>
-              </div>
+                {!form.formState.isValid && password && (
+                  <p className="text-sm text-muted-foreground text-center">
+                    Preencha o usuário de rede e e-mail para compartilhar as credenciais
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
-              {(!userCredentials.networkUser.trim() || !userCredentials.email.trim()) && password && (
-                <p className="text-sm text-muted-foreground text-center">
-                  Preencha o usuário de rede e e-mail para compartilhar as credenciais
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {password && (
             <Card>
               <CardContent className="pt-6 space-y-3">
                 <div className="flex items-center justify-between text-sm">
@@ -284,79 +215,130 @@ export default function PasswordGeneratorPage() {
                 )}
               </CardContent>
             </Card>
-          )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">Configurações da Senha</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Comprimento da Senha</Label>
-                  <span className="text-sm font-mono bg-muted px-2 py-1 rounded">{criteria.length}</span>
-                </div>
-                <Slider
-                  value={[criteria.length]}
-                  onValueChange={(value) => setCriteria((prev) => ({ ...prev, length: value[0] }))}
-                  min={8}
-                  max={64}
-                  step={1}
-                  className="w-full"
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">Configurações da Senha</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <FormField
+                  control={form.control}
+                  name="length"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium">Comprimento da Senha</FormLabel>
+                        <span className="text-sm font-mono bg-muted px-2 py-1 rounded">{field.value}</span>
+                      </div>
+                      <FormControl>
+                        <Slider
+                          value={[field.value]}
+                          onValueChange={(value) => {
+                            field.onChange(value[0])
+                            handleGeneratePassword()
+                          }}
+                          min={8}
+                          max={64}
+                          step={1}
+                          className="w-full"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
                 />
-              </div>
 
-              <div className="space-y-4">
-                <Label className="text-sm font-medium">Tipos de Caracteres</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
-                    <Label htmlFor="uppercase" className="text-sm">
-                      Maiúsculas (A-Z)
-                    </Label>
-                    <Switch
-                      id="uppercase"
-                      checked={criteria.includeUppercase}
-                      onCheckedChange={(checked) => setCriteria((prev) => ({ ...prev, includeUppercase: checked }))}
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium">Tipos de Caracteres</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="includeUppercase"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                            <FormLabel className="text-sm">Maiúsculas (A-Z)</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                  field.onChange(checked)
+                                  handleGeneratePassword()
+                                }}
+                              />
+                            </FormControl>
+                          </div>
+                        </FormItem>
+                      )}
                     />
-                  </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
-                    <Label htmlFor="numbers" className="text-sm">
-                      Números (0-9)
-                    </Label>
-                    <Switch
-                      id="numbers"
-                      checked={criteria.includeNumbers}
-                      onCheckedChange={(checked) => setCriteria((prev) => ({ ...prev, includeNumbers: checked }))}
+                    <FormField
+                      control={form.control}
+                      name="includeNumbers"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                            <FormLabel className="text-sm">Números (0-9)</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                  field.onChange(checked)
+                                  handleGeneratePassword()
+                                }}
+                              />
+                            </FormControl>
+                          </div>
+                        </FormItem>
+                      )}
                     />
-                  </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
-                    <Label htmlFor="lowercase" className="text-sm">
-                      Minúsculas (a-z)
-                    </Label>
-                    <Switch
-                      id="lowercase"
-                      checked={criteria.includeLowercase}
-                      onCheckedChange={(checked) => setCriteria((prev) => ({ ...prev, includeLowercase: checked }))}
+                    <FormField
+                      control={form.control}
+                      name="includeLowercase"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                            <FormLabel className="text-sm">Minúsculas (a-z)</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                  field.onChange(checked)
+                                  handleGeneratePassword()
+                                }}
+                              />
+                            </FormControl>
+                          </div>
+                        </FormItem>
+                      )}
                     />
-                  </div>
 
-                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
-                    <Label htmlFor="symbols" className="text-sm">
-                      Símbolos (!@#$)
-                    </Label>
-                    <Switch
-                      id="symbols"
-                      checked={criteria.includeSymbols}
-                      onCheckedChange={(checked) => setCriteria((prev) => ({ ...prev, includeSymbols: checked }))}
+                    <FormField
+                      control={form.control}
+                      name="includeSymbols"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-card/50">
+                            <FormLabel className="text-sm">Símbolos (!@#$)</FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                  field.onChange(checked)
+                                  handleGeneratePassword()
+                                }}
+                              />
+                            </FormControl>
+                          </div>
+                        </FormItem>
+                      )}
                     />
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        </Form>
       </div>
     </div>
   )

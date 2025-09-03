@@ -6,6 +6,20 @@ import { securityLogger } from "@/lib/security-logger"
 import { validateCreatePasswordRequest } from "@/lib/input-validator"
 import { createSecureResponse } from "@/lib/security-headers"
 
+const EXPIRATION_TIME_MAP: Record<string, number> = {
+  "15m": 0.25,
+  "30m": 0.5,
+  "1h": 1,
+  "2h": 2,
+  "6h": 6,
+  "12h": 12,
+  "24h": 24,
+  "48h": 48,
+  "72h": 72,
+  "168h": 168,
+  "720h": 720,
+}
+
 export async function POST(request: NextRequest) {
   const clientId = getClientIdentifier(request)
 
@@ -22,15 +36,26 @@ export async function POST(request: NextRequest) {
 
       return createSecureResponse(
         {
-          error: "Too many requests. Please try again later.",
+          error: "Muitas tentativas. Tente novamente mais tarde.",
           retryAfter: Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000),
         },
         429,
       )
     }
 
-    // Parse and validate request body
-    const body = await request.json()
+    let body: any
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      securityLogger.log(
+        "invalid_json",
+        "medium",
+        { endpoint: "/api/passwords/create", error: "Invalid JSON format" },
+        clientId,
+      )
+      return createSecureResponse({ error: "Formato JSON inválido" }, 400)
+    }
+
     const validation = validateCreatePasswordRequest(body)
 
     if (!validation.success) {
@@ -46,72 +71,60 @@ export async function POST(request: NextRequest) {
 
     const { password, expirationTime, usageLimit, customHours, networkUser, email } = validation.data
 
-    // Calculate expiration hours
     let expirationHours: number
 
-    switch (expirationTime) {
-      case "15m":
-        expirationHours = 0.25
-        break
-      case "30m":
-        expirationHours = 0.5
-        break
-      case "1h":
-        expirationHours = 1
-        break
-      case "2h":
-        expirationHours = 2
-        break
-      case "6h":
-        expirationHours = 6
-        break
-      case "12h":
-        expirationHours = 12
-        break
-      case "24h":
-        expirationHours = 24
-        break
-      case "48h":
-        expirationHours = 48
-        break
-      case "72h":
-        expirationHours = 72
-        break
-      case "168h":
-        expirationHours = 168
-        break
-      case "720h":
-        expirationHours = 720
-        break
-      case "custom":
-        expirationHours = customHours!
-        break
-      default:
-        return createSecureResponse({ error: "Invalid expiration time" }, 400)
+    if (expirationTime === "custom") {
+      if (!customHours || customHours < 0.25 || customHours > 8760) {
+        return createSecureResponse(
+          {
+            error: "Tempo personalizado deve estar entre 0.25 e 8760 horas",
+          },
+          400,
+        )
+      }
+      expirationHours = customHours
+    } else {
+      expirationHours = EXPIRATION_TIME_MAP[expirationTime]
+      if (!expirationHours) {
+        return createSecureResponse({ error: "Tempo de expiração inválido" }, 400)
+      }
     }
 
-    // Validate expiration hours range
-    if (expirationHours < 0.25) {
-      return createSecureResponse({ error: "Minimum expiration time is 15 minutes" }, 400)
+    let token: string
+    let stored: any
+
+    try {
+      token = generateSecureToken()
+
+      const credentialsData: CreateCredentialsData = {
+        password,
+        networkUser,
+        email,
+        expirationHours,
+        usageLimit,
+      }
+
+      stored = storePassword(token, credentialsData)
+    } catch (dbError) {
+      const errorMessage = dbError instanceof Error ? dbError.message : "Database error"
+
+      securityLogger.log(
+        "database_error",
+        "high",
+        {
+          endpoint: "/api/passwords/create",
+          error: errorMessage,
+          operation: "store_credentials",
+        },
+        clientId,
+      )
+
+      if (errorMessage.includes("Token already exists")) {
+        return createSecureResponse({ error: "Erro interno. Tente novamente." }, 500)
+      }
+
+      return createSecureResponse({ error: "Falha ao armazenar credenciais" }, 500)
     }
-
-    if (expirationHours > 8760) {
-      return createSecureResponse({ error: "Maximum expiration time is 1 year (8760 hours)" }, 400)
-    }
-
-    // Generate secure token
-    const token = generateSecureToken()
-
-    // Store password
-    const credentialsData: CreateCredentialsData = {
-      password,
-      networkUser,
-      email,
-      expirationHours,
-      usageLimit,
-    }
-
-    const stored = storePassword(token, credentialsData)
 
     // Log successful password creation
     securityLogger.log(
@@ -133,20 +146,23 @@ export async function POST(request: NextRequest) {
       token,
       expiresAt: stored.expiresAt.toISOString(),
       usageLimit: stored.usageLimit,
-      message: "Password stored successfully",
+      message: "Credenciais armazenadas com sucesso",
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+
     securityLogger.log(
       "server_error",
       "high",
       {
         endpoint: "/api/passwords/create",
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
       },
       clientId,
     )
 
     console.error("Error creating password:", error)
-    return createSecureResponse({ error: "Internal server error" }, 500)
+    return createSecureResponse({ error: "Erro interno do servidor" }, 500)
   }
 }

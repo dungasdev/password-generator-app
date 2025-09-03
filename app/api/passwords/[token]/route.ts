@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
 
       return createSecureResponse(
         {
-          error: "Too many requests. Please try again later.",
+          error: "Muitas tentativas. Tente novamente mais tarde.",
           retryAfter: Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000),
         },
         429,
@@ -29,6 +29,11 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
     }
 
     const { token } = params
+
+    if (!token || typeof token !== "string") {
+      securityLogger.log("missing_token", "medium", { endpoint: "/api/passwords/[token]" }, clientId)
+      return createSecureResponse({ error: "Token é obrigatório" }, 400)
+    }
 
     // Validate token format
     const tokenValidation = validateToken(token)
@@ -40,11 +45,34 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
         clientId,
       )
 
-      return createSecureResponse({ error: tokenValidation.error }, 400)
+      return createSecureResponse({ error: "Formato de token inválido" }, 400)
     }
 
-    // Retrieve password
-    const credentialsData = retrievePassword(tokenValidation.token)
+    let credentialsData: any
+
+    try {
+      credentialsData = retrievePassword(tokenValidation.token)
+    } catch (dbError) {
+      const errorMessage = dbError instanceof Error ? dbError.message : "Database error"
+
+      securityLogger.log(
+        "database_error",
+        "high",
+        {
+          endpoint: "/api/passwords/[token]",
+          error: errorMessage,
+          operation: "retrieve_credentials",
+          token: token.substring(0, 8) + "...",
+        },
+        clientId,
+      )
+
+      if (errorMessage.includes("decrypt")) {
+        return createSecureResponse({ error: "Credenciais corrompidas ou inválidas" }, 410)
+      }
+
+      return createSecureResponse({ error: "Falha ao recuperar credenciais" }, 500)
+    }
 
     if (!credentialsData) {
       securityLogger.log(
@@ -54,18 +82,18 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
         clientId,
       )
 
-      return createSecureResponse({ error: "Credentials not found or invalid token" }, 404)
+      return createSecureResponse({ error: "Credenciais não encontradas ou token inválido" }, 404)
     }
 
     if (!credentialsData.isValid) {
-      let errorMessage = "Credentials link is no longer valid"
+      let errorMessage = "Link de credenciais não é mais válido"
       let logEvent = "credentials_invalid"
 
       if (credentialsData.isExpired) {
-        errorMessage = "Credentials link has expired"
+        errorMessage = "Link de credenciais expirou"
         logEvent = "credentials_expired"
       } else if (credentialsData.usageLimit !== -1 && credentialsData.usageCount >= credentialsData.usageLimit) {
-        errorMessage = "Credentials link has reached its usage limit"
+        errorMessage = "Link de credenciais atingiu o limite de uso"
         logEvent = "credentials_usage_limit_reached"
       }
 
@@ -77,6 +105,7 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
           token: token.substring(0, 8) + "...",
           usageCount: credentialsData.usageCount,
           usageLimit: credentialsData.usageLimit,
+          isExpired: credentialsData.isExpired,
         },
         clientId,
       )
@@ -117,17 +146,20 @@ export async function GET(request: NextRequest, { params }: { params: { token: s
       usageCount: credentialsData.usageCount,
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+
     securityLogger.log(
       "server_error",
       "high",
       {
         endpoint: "/api/passwords/[token]",
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
       },
       clientId,
     )
 
     console.error("Error retrieving credentials:", error)
-    return createSecureResponse({ error: "Internal server error" }, 500)
+    return createSecureResponse({ error: "Erro interno do servidor" }, 500)
   }
 }

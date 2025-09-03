@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,29 +11,12 @@ import { Shield, Copy, Check, ArrowLeft, Clock, Users, LinkIcon, AlertTriangle }
 import Link from "next/link"
 import AmaraLogo from "@/components/amara-logo"
 import { ThemeToggle } from "@/components/theme-toggle"
-
-interface ShareSettings {
-  password: string
-  networkUser: string
-  email: string
-  expirationTime: string
-  usageLimit: number
-  customHours?: number
-}
+import { useShareForm } from "@/hooks/use-share-form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 
 export default function SharePage() {
-  const [settings, setSettings] = useState<ShareSettings>({
-    password: "",
-    networkUser: "",
-    email: "",
-    expirationTime: "24h",
-    usageLimit: 1,
-  })
-
-  const [shareLink, setShareLink] = useState("")
+  const { form, shareLink, setShareLink, isGenerating, error, setError, generateShareLink } = useShareForm()
   const [linkCopied, setCopied] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState("")
 
   useEffect(() => {
     const credentialsFromStorage = sessionStorage.getItem("credentialsToShare")
@@ -42,18 +24,18 @@ export default function SharePage() {
     if (credentialsFromStorage) {
       try {
         const credentials = JSON.parse(credentialsFromStorage)
-        setSettings((prev) => ({
-          ...prev,
+        form.reset({
+          ...form.getValues(),
           password: credentials.password || "",
           networkUser: credentials.networkUser || "",
           email: credentials.email || "",
-        }))
+        })
         sessionStorage.removeItem("credentialsToShare")
       } catch (error) {
         console.error("Error parsing credentials from storage:", error)
       }
     }
-  }, [])
+  }, [form])
 
   const expirationOptions = [
     { value: "15m", label: "15 Minutos", description: "Link expira em 15 minutos" },
@@ -78,43 +60,11 @@ export default function SharePage() {
     { value: -1, label: "Ilimitado", description: "Sem limite de uso (expira apenas por tempo)" },
   ]
 
-  const generateShareLink = async () => {
-    if (!settings.password.trim() || !settings.networkUser.trim() || !settings.email.trim()) return
-
-    setIsGenerating(true)
-    setError("")
-
+  const onSubmit = async (data: any) => {
     try {
-      const response = await fetch("/api/passwords/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          password: settings.password,
-          networkUser: settings.networkUser,
-          email: settings.email,
-          expirationTime: settings.expirationTime,
-          usageLimit: settings.usageLimit,
-          customHours: settings.customHours,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Falha ao criar link de compartilhamento")
-      }
-
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
-      const generatedLink = `${baseUrl}/view/${data.token}`
-
-      setShareLink(generatedLink)
+      await generateShareLink(data)
     } catch (err) {
-      console.error("Error generating share link:", err)
-      setError(err instanceof Error ? err.message : "Falha ao gerar link de compartilhamento")
-    } finally {
-      setIsGenerating(false)
+      // Error is handled in the hook
     }
   }
 
@@ -130,10 +80,12 @@ export default function SharePage() {
     }
   }
 
+  const watchedValues = form.watch()
+
   const getExpirationLabel = () => {
-    const option = expirationOptions.find((opt) => opt.value === settings.expirationTime)
-    if (settings.expirationTime === "custom" && settings.customHours) {
-      const hours = settings.customHours
+    const option = expirationOptions.find((opt) => opt.value === watchedValues.expirationTime)
+    if (watchedValues.expirationTime === "custom" && watchedValues.customHours) {
+      const hours = watchedValues.customHours
       if (hours < 24) {
         return `${hours} ${hours === 1 ? "hora" : "horas"}`
       } else if (hours < 168) {
@@ -150,7 +102,7 @@ export default function SharePage() {
   }
 
   const getUsageLimitLabel = () => {
-    const option = usageLimitOptions.find((opt) => opt.value === settings.usageLimit)
+    const option = usageLimitOptions.find((opt) => opt.value === watchedValues.usageLimit)
     return option?.label || ""
   }
 
@@ -174,281 +126,305 @@ export default function SharePage() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Share Settings */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LinkIcon className="h-5 w-5 text-primary" />
-                  Credenciais do Colaborador
-                </CardTitle>
-                <CardDescription>Informações que serão compartilhadas com o colaborador</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="networkUser">Usuário de Rede</Label>
-                    <Input
-                      id="networkUser"
-                      type="text"
-                      value={settings.networkUser}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, networkUser: e.target.value }))}
-                      placeholder="ex: joao.silva"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Share Settings */}
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <LinkIcon className="h-5 w-5 text-primary" />
+                      Credenciais do Colaborador
+                    </CardTitle>
+                    <CardDescription>Informações que serão compartilhadas com o colaborador</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="networkUser"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Usuário de Rede</FormLabel>
+                            <FormControl>
+                              <Input placeholder="ex: joao.silva" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>E-mail Corporativo</FormLabel>
+                            <FormControl>
+                              <Input type="email" placeholder="joao.silva@amaranetzero.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Senha</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="Digite a senha para compartilhar"
+                              className="font-mono"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">E-mail Corporativo</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={settings.email}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, email: e.target.value }))}
-                      placeholder="joao.silva@amaranetzero.com"
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-primary" />
+                      Tempo de Expiração
+                    </CardTitle>
+                    <CardDescription>Defina quando o link compartilhado deve expirar</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="expirationTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tempo de Expiração</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione o tempo de expiração" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {expirationOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  <div className="flex flex-col">
+                                    <span>{option.label}</span>
+                                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={settings.password}
-                    onChange={(e) => setSettings((prev) => ({ ...prev, password: e.target.value }))}
-                    placeholder="Digite a senha para compartilhar"
-                    className="font-mono"
-                  />
-                </div>
+                    {watchedValues.expirationTime === "custom" && (
+                      <FormField
+                        control={form.control}
+                        name="customHours"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Horas Personalizadas</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0.25"
+                                max="8760"
+                                step="0.25"
+                                placeholder="Digite as horas (0.25-8760)"
+                                {...field}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-muted-foreground">
+                              Máximo: 8760 horas (1 ano). Mínimo: 0.25 horas (15 minutos).
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
 
-                {(!settings.password.trim() || !settings.networkUser.trim() || !settings.email.trim()) && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      Por favor, preencha todos os campos obrigatórios: usuário de rede, e-mail e senha.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  Tempo de Expiração
-                </CardTitle>
-                <CardDescription>Defina quando o link compartilhado deve expirar</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="expiration">Tempo de Expiração</Label>
-                  <Select
-                    value={settings.expirationTime}
-                    onValueChange={(value) => setSettings((prev) => ({ ...prev, expirationTime: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tempo de expiração" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {expirationOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            <span className="text-xs text-muted-foreground">{option.description}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {settings.expirationTime === "custom" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="customHours">Horas Personalizadas</Label>
-                    <Input
-                      id="customHours"
-                      type="number"
-                      min="1"
-                      max="8760"
-                      value={settings.customHours || ""}
-                      onChange={(e) =>
-                        setSettings((prev) => ({ ...prev, customHours: Number.parseInt(e.target.value) || undefined }))
-                      }
-                      placeholder="Digite as horas (1-8760)"
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      Limite de Uso
+                    </CardTitle>
+                    <CardDescription>Defina quantas vezes o link pode ser acessado</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="usageLimit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Limite de Uso</FormLabel>
+                          <Select
+                            onValueChange={(value) => field.onChange(Number(value))}
+                            value={field.value.toString()}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione o limite de uso" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {usageLimitOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value.toString()}>
+                                  <div className="flex flex-col">
+                                    <span>{option.label}</span>
+                                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Máximo: 8760 horas (1 ano). Para tempos menores que 1 hora, use as opções em minutos acima.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  Limite de Uso
-                </CardTitle>
-                <CardDescription>Defina quantas vezes o link pode ser acessado</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="usageLimit">Limite de Uso</Label>
-                  <Select
-                    value={settings.usageLimit.toString()}
-                    onValueChange={(value) => setSettings((prev) => ({ ...prev, usageLimit: Number.parseInt(value) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o limite de uso" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {usageLimitOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value.toString()}>
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            <span className="text-xs text-muted-foreground">{option.description}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              {/* Share Link Generation */}
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resumo das Configurações</CardTitle>
+                    <CardDescription>Revise sua configuração de compartilhamento</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Usuário de Rede</span>
+                        <Badge variant="outline">{watchedValues.networkUser || "Não informado"}</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">E-mail</span>
+                        <Badge variant="outline" className="max-w-[200px] truncate">
+                          {watchedValues.email || "Não informado"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Comprimento da Senha</span>
+                        <Badge variant="outline">{watchedValues.password.length} caracteres</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Expira Em</span>
+                        <Badge variant="outline">{getExpirationLabel()}</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Limite de Uso</span>
+                        <Badge variant="outline">{getUsageLimitLabel()}</Badge>
+                      </div>
+                    </div>
 
-          {/* Share Link Generation */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Resumo das Configurações</CardTitle>
-                <CardDescription>Revise sua configuração de compartilhamento</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Usuário de Rede</span>
-                    <Badge variant="outline">{settings.networkUser || "Não informado"}</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">E-mail</span>
-                    <Badge variant="outline" className="max-w-[200px] truncate">
-                      {settings.email || "Não informado"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Comprimento da Senha</span>
-                    <Badge variant="outline">{settings.password.length} caracteres</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Expira Em</span>
-                    <Badge variant="outline">{getExpirationLabel()}</Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Limite de Uso</span>
-                    <Badge variant="outline">{getUsageLimitLabel()}</Badge>
-                  </div>
-                </div>
+                    {error && (
+                      <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                    )}
 
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-
-                <Button
-                  onClick={generateShareLink}
-                  className="w-full"
-                  size="lg"
-                  disabled={
-                    !settings.password.trim() ||
-                    !settings.networkUser.trim() ||
-                    !settings.email.trim() ||
-                    isGenerating ||
-                    (settings.expirationTime === "custom" && (!settings.customHours || settings.customHours < 1))
-                  }
-                >
-                  {isGenerating ? "Gerando Link Seguro..." : "Gerar Link de Compartilhamento"}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {shareLink && (
-              <Card className="bg-primary/5 border-primary/20">
-                <CardHeader>
-                  <CardTitle className="text-lg">Link de Compartilhamento Seguro</CardTitle>
-                  <CardDescription>
-                    Compartilhe este link com usuários autorizados. Ele expirará com base nas suas configurações.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="relative">
-                    <Input value={shareLink} readOnly className="font-mono text-sm pr-12 bg-background" />
                     <Button
-                      size="sm"
-                      variant="ghost"
-                      className="absolute right-1 top-1 h-8 w-8 p-0"
-                      onClick={copyShareLink}
+                      type="submit"
+                      className="w-full"
+                      size="lg"
+                      disabled={!form.formState.isValid || isGenerating}
                     >
-                      {linkCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                      {isGenerating ? "Gerando Link Seguro..." : "Gerar Link de Compartilhamento"}
                     </Button>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <Alert>
-                    <Shield className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Aviso de Segurança:</strong> Este link contém informações sensíveis. Compartilhe apenas
-                      através de canais seguros e com destinatários confiáveis.
-                    </AlertDescription>
-                  </Alert>
+                {shareLink && (
+                  <Card className="bg-primary/5 border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Link de Compartilhamento Seguro</CardTitle>
+                      <CardDescription>
+                        Compartilhe este link com usuários autorizados. Ele expirará com base nas suas configurações.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="relative">
+                        <Input value={shareLink} readOnly className="font-mono text-sm pr-12 bg-background" />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute right-1 top-1 h-8 w-8 p-0"
+                          onClick={copyShareLink}
+                        >
+                          {linkCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                        </Button>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="text-center p-3 bg-background rounded-md border">
-                      <Clock className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                      <p className="font-medium">Expira</p>
-                      <p className="text-muted-foreground">{getExpirationLabel()}</p>
-                    </div>
-                    <div className="text-center p-3 bg-background rounded-md border">
-                      <Users className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                      <p className="font-medium">Limite de Uso</p>
-                      <p className="text-muted-foreground">{getUsageLimitLabel()}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                      <Alert>
+                        <Shield className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>Aviso de Segurança:</strong> Este link contém informações sensíveis. Compartilhe
+                          apenas através de canais seguros e com destinatários confiáveis.
+                        </AlertDescription>
+                      </Alert>
 
-            {/* Security Tips */}
-            <Card className="bg-muted/30">
-              <CardHeader>
-                <CardTitle className="text-lg">Melhores Práticas de Compartilhamento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-start gap-2">
-                    <Shield className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    Use canais de comunicação seguros (mensagens criptografadas, email seguro)
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Clock className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    Defina o menor tempo de expiração que atenda às suas necessidades
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Users className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    Use links de uso único para máxima segurança
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                    Verifique a identidade do destinatário antes de compartilhar senhas sensíveis
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="text-center p-3 bg-background rounded-md border">
+                          <Clock className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
+                          <p className="font-medium">Expira</p>
+                          <p className="text-muted-foreground">{getExpirationLabel()}</p>
+                        </div>
+                        <div className="text-center p-3 bg-background rounded-md border">
+                          <Users className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
+                          <p className="font-medium">Limite de Uso</p>
+                          <p className="text-muted-foreground">{getUsageLimitLabel()}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Security Tips */}
+                <Card className="bg-muted/30">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Melhores Práticas de Compartilhamento</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                        <Shield className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                        Use canais de comunicação seguros (mensagens criptografadas, email seguro)
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Clock className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                        Defina o menor tempo de expiração que atenda às suas necessidades
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Users className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                        Use links de uso único para máxima segurança
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                        Verifique a identidade do destinatário antes de compartilhar senhas sensíveis
+                      </li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </form>
+        </Form>
       </div>
     </div>
   )

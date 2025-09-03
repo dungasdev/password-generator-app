@@ -11,7 +11,7 @@ export interface EncryptedData {
 
 export function encrypt(text: string): EncryptedData {
   const iv = crypto.randomBytes(16)
-  const cipher = crypto.createCipher(ALGORITHM, ENCRYPTION_KEY)
+  const cipher = crypto.createCipherGCM(ALGORITHM, Buffer.from(ENCRYPTION_KEY.slice(0, 32)), iv)
 
   let encrypted = cipher.update(text, "utf8", "hex")
   encrypted += cipher.final("hex")
@@ -26,13 +26,19 @@ export function encrypt(text: string): EncryptedData {
 }
 
 export function decrypt(encryptedData: EncryptedData): string {
-  const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY)
-  decipher.setAuthTag(Buffer.from(encryptedData.tag, "hex"))
+  try {
+    const iv = Buffer.from(encryptedData.iv, "hex")
+    const decipher = crypto.createDecipherGCM(ALGORITHM, Buffer.from(ENCRYPTION_KEY.slice(0, 32)), iv)
+    decipher.setAuthTag(Buffer.from(encryptedData.tag, "hex"))
 
-  let decrypted = decipher.update(encryptedData.encrypted, "hex", "utf8")
-  decrypted += decipher.final("utf8")
+    let decrypted = decipher.update(encryptedData.encrypted, "hex", "utf8")
+    decrypted += decipher.final("utf8")
 
-  return decrypted
+    return decrypted
+  } catch (error) {
+    console.error("Decryption error:", error)
+    throw new Error("Failed to decrypt data")
+  }
 }
 
 export function generateSecureToken(): string {
